@@ -26,8 +26,8 @@
 ### 1. Клонирование репозитория
 
 ```bash
-git clone <ссылка_на_репозиторий>
-cd <название_проекта>
+git clone https://github.com/Razvald/React_Project_2.0.git
+cd React_Project_2.0
 ```
 
 ### 2. Настройка сервера
@@ -50,8 +50,8 @@ npm install
 
 ```javascript
 const dbConfig = {
-   server: "localhost",
-   database: "Web_Pizza",
+   server: <название_сервера>,
+   database: <название_базы_данных>,
    user: "TestUser",
    password: "StrongPassword!",
    options: {
@@ -100,12 +100,13 @@ npm start
 #### Импорт таблиц
 
 1. Откройте **Microsoft SQL Server Management Studio**.
-2. Создайте новую базу данных с именем `Web_Pizza`.
+2. Создайте новую базу данных.
 3. Импортируйте таблицы из файла `DB_React_Project.xlsx` (вкладки Excel-файла содержат структуру таблиц для импорта).
 
 #### Создание таблиц и связей
 
 1. Выполните SQL-запросы из файла `DB.txt`, чтобы создать таблицы и установить связи между ними:
+   -  `CREATE LOGIN...` для создания пользователя базы данных.
    -  `CREATE TABLE [dbo]...` для создания таблиц.
    -  `ALTER TABLE ADD FOREIGN KEY...` для добавления внешних ключей.
 

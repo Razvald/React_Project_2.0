@@ -1,0 +1,103 @@
+CREATE LOGIN TestUser WITH PASSWORD = 'StrongPassword!';
+CREATE USER TestUser FOR LOGIN TestUser;
+ALTER ROLE db_owner ADD MEMBER TestUser;
+
+[dbo].[Categories]
+[dbo].[Order_Audit]
+[dbo].[Order_Details]
+[dbo].[Orders]
+[dbo].[Products]
+[dbo].[Roles]
+[dbo].[Status]
+[dbo].[Users]
+
+CREATE TABLE [dbo].[Categories] (
+[Category_Id] int primary key identity(1,1) NOT NULL,
+[Name] nvarchar(255) NOT NULL
+)
+
+CREATE TABLE [dbo].[Order_Audit] (
+[Audit_Id] int primary key identity(1,1) NOT NULL,
+[Order_Id] int NOT NULL,
+[Old_Status_Id] int NOT NULL,
+[New_Status_Id] int NOT NULL,
+[Changed_At] datetime NOT NULL
+)
+
+CREATE TABLE [dbo].[Order_Details] (
+[Order_Detail_Id] int primary key identity(1,1) NOT NULL,
+[Order_Id] int NOT NULL,
+[Product_Id] int NOT NULL,
+[Quantity] int NOT NULL
+)
+
+CREATE TABLE [dbo].[Orders] (
+[Order_Id] int primary key identity(1,1) NOT NULL,
+[User_Id] int NOT NULL,
+[Status_Id] int NOT NULL,
+[Total_Price] int NOT NULL,
+[Order_Date] datetime NOT NULL
+)
+
+CREATE TABLE [dbo].[Products] (
+[Product_Id] int primary key identity(1,1) NOT NULL,
+[Name] nvarchar(255) NOT NULL,
+[Description] nvarchar(255) NOT NULL,
+[Price] int NOT NULL,
+[Image_url] nvarchar(255) NOT NULL
+)
+
+CREATE TABLE [dbo].[Roles] (
+[Role_Id] int primary key identity(1,1) NOT NULL,
+[Title] nvarchar(255) NOT NULL
+)
+
+CREATE TABLE [dbo].[Status] (
+[Status_Id] int primary key identity(1,1) NOT NULL,
+[Title] nvarchar(255) NOT NULL
+)
+
+CREATE TABLE [dbo].[Users] (
+[User_Id] int primary key identity(1,1) NOT NULL,
+[Name] nvarchar(255) NOT NULL,
+[Email] nvarchar(255) NOT NULL,
+[Password] nvarchar(255) NOT NULL,
+[Phone] nvarchar(255) NOT NULL,
+[Address] nvarchar(255) NOT NULL,
+[Role_Id] int NOT NULL
+)
+
+-- Связь между Orders и Users
+ALTER TABLE Orders
+ADD CONSTRAINT FK_Orders_Users
+FOREIGN KEY (User_Id) REFERENCES Users(User_Id);
+
+-- Связь между Order_Details и Orders
+ALTER TABLE Order_Details
+ADD CONSTRAINT FK_Order_Details_Orders
+FOREIGN KEY (Order_Id) REFERENCES Orders(Order_Id);
+
+-- Связь между Order_Details и Products
+ALTER TABLE Order_Details
+ADD CONSTRAINT FK_Order_Details_Products
+FOREIGN KEY (Product_Id) REFERENCES Products(Product_Id);
+
+-- Связь между Orders и Status
+ALTER TABLE Orders
+ADD CONSTRAINT FK_Orders_Status
+FOREIGN KEY (Status_Id) REFERENCES Status(Status_Id);
+
+-- Связь между Users и Roles
+ALTER TABLE Users
+ADD CONSTRAINT FK_Users_Roles
+FOREIGN KEY (Role_Id) REFERENCES Roles(Role_Id);
+
+-- Связь между Order_Audit и Orders
+ALTER TABLE Order_Audit
+ADD CONSTRAINT FK_Order_Audit_Orders
+FOREIGN KEY (Order_Id) REFERENCES Orders(Order_Id);
+
+-- Связь между Products и Categories (если необходимо)
+ALTER TABLE Products
+ADD CONSTRAINT FK_Products_Categories
+FOREIGN KEY (Category_Id) REFERENCES Categories(Category_Id);

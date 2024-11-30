@@ -1,0 +1,588 @@
+server\server.js
+const express = require("express");
+const bodyParser = require("body-parser");
+const sql = require("mssql");
+const cors = require("cors");
+
+const app = express();
+const port = 5000;
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
+
+// Database configuration
+const dbConfig = {
+   server: "localhost",
+   database: "Web_Pizza",
+   user: "TestUser",
+   password: "StrongPassword!",
+   options: {
+      encrypt: false,
+      trustServerCertificate: true,
+   },
+};
+
+// Регистрация
+app.post("/api/register", async (req, res) => {
+   const { username, password } = req.body;
+
+   if (!username || !password) {
+      return res.status(400).send("Введите имя пользователя и пароль");
+   }
+
+   try {
+      const pool = await sql.connect(dbConfig);
+      await pool
+         .request()
+         .input("username", sql.NVarChar, username)
+         .input("password", sql.NVarChar, password)
+         .query(
+            "INSERT INTO Users (Email, Password, Role_Id) VALUES (@username, @password, 1)"
+         );
+      res.send("Регистрация прошла успешно");
+   } catch (err) {
+      console.error(err);
+      res.status(500).send("Ошибка сервера");
+   }
+});
+
+app.post("/api/login", async (req, res) => {
+   const { username, password } = req.body;
+
+   if (!username || !password) {
+      return res.status(400).send("Введите имя пользователя и пароль");
+   }
+
+   try {
+      const pool = await sql.connect(dbConfig);
+      const result = await pool
+         .request()
+         .input("username", sql.NVarChar, username)
+         .input("password", sql.NVarChar, password)
+         .query(
+            "SELECT * FROM Users WHERE Email = @username AND Password = @password"
+         );
+
+      const user = result.recordset[0];
+      if (!user) {
+         return res.status(401).send("Неверные имя пользователя или пароль");
+      }
+
+      res.json({ message: "Вы успешно вошли", userId: user.User_Id });
+   } catch (err) {
+      console.error(err);
+      res.status(500).send("Ошибка сервера");
+   }
+});
+
+// Получение данных пользователя по ID
+app.get("/api/users/:id", async (req, res) => {
+   const { id } = req.params;
+   try {
+      const pool = await sql.connect(dbConfig);
+      const result = await pool
+         .request()
+         .input("UserId", sql.Int, id)
+         .query("SELECT * FROM Users WHERE User_Id = @UserId");
+      if (result.recordset.length > 0) {
+         res.json(result.recordset[0]);
+      } else {
+         res.status(404).send("User not found");
+      }
+   } catch (err) {
+      console.error(err);
+      res.status(500).send("Server error");
+   }
+});
+
+// Получение заказов пользователя по User_Id
+app.get("/api/orders/user/:id", async (req, res) => {
+   const { id } = req.params;
+   try {
+      const pool = await sql.connect(dbConfig);
+      const result = await pool.request().input("UserId", sql.Int, id).query(`
+            SELECT o.Order_Id, o.Order_Date, o.Total_Price, s.Title AS Status_Title
+            FROM Orders o
+            JOIN Status s ON o.Status_Id = s.Status_Id
+            WHERE o.User_Id = @UserId
+         `);
+      res.json(result.recordset);
+   } catch (err) {
+      console.error(err);
+      res.status(500).send("Server error");
+   }
+});
+
+// API endpoint для получения продуктов
+app.get("/api/products", async (req, res) => {
+   try {
+      const pool = await sql.connect(dbConfig);
+      const result = await pool.request().query("SELECT * FROM Products");
+      res.json(result.recordset);
+   } catch (err) {
+      console.error(err);
+      res.status(500).send("Server error");
+   }
+});
+
+app.listen(port, () => {
+   console.log(`Server is running on http://localhost:${port}`);
+});
+
+
+client\client\src\index.js
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+client\client\src\App.js
+import React from "react";
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import Home from "./pages/Home";
+import Catalog from "./pages/Catalog";
+import Cart from "./pages/Cart";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Profile from "./pages/Profile";
+
+const App = () => {
+   return (
+      <Router>
+         <nav style={{ padding: "10px", background: "#c4c4f4" }}>
+            <Link to="/" style={{ margin: "0 10px" }}>
+               Главная
+            </Link>
+            <Link to="/catalog" style={{ margin: "0 10px" }}>
+               Каталог
+            </Link>
+            <Link to="/cart" style={{ margin: "0 10px" }}>
+               Корзина
+            </Link>
+            <Link to="/login" style={{ margin: "0 10px" }}>
+               Войти
+            </Link>
+            <Link to="/register" style={{ margin: "0 10px" }}>
+               Регистрация
+            </Link>
+            <Link to="/profile" style={{ margin: "0 10px" }}>
+               Профиль
+            </Link>
+         </nav>
+         <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/catalog" element={<Catalog />} />
+            <Route path="/cart" element={<Cart />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/profile" element={<Profile />} />
+         </Routes>
+      </Router>
+   );
+};
+
+export default App;
+
+
+
+client\client\src\pages\Register.js
+import React, { useState } from "react";
+import axios from "axios";
+
+const Register = () => {
+   const [username, setUsername] = useState("");
+   const [password, setPassword] = useState("");
+
+   const handleRegister = async (e) => {
+      e.preventDefault();
+
+      try {
+         await axios.post("http://localhost:5000/api/register", {
+            username,
+            password,
+         });
+
+         alert("Регистрация прошла успешно");
+         setUsername("");
+         setPassword("");
+      } catch (error) {
+         console.error(error);
+         alert("Ошибка регистрации. Попробуйте снова.");
+      }
+   };
+
+   return (
+      <div style={{ padding: "20px" }}>
+         <h1>Регистрация</h1>
+         <form onSubmit={handleRegister}>
+            <div>
+               <label>Имя пользователя:</label>
+               <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+               />
+            </div>
+            <div>
+               <label>Пароль:</label>
+               <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+               />
+            </div>
+            <button type="submit">Зарегистрироваться</button>
+         </form>
+      </div>
+   );
+};
+
+export default Register;
+
+
+
+client\client\src\pages\Profile.js
+import React, { useEffect, useState } from "react";
+
+const Profile = () => {
+   const [user, setUser] = useState(null);
+   const [orders, setOrders] = useState([]);
+
+   useEffect(() => {
+      // Получаем ID пользователя из localStorage
+      const userId = localStorage.getItem("userId");
+
+      if (userId) {
+         // Загружаем данные пользователя
+         fetch(`http://localhost:5000/api/users/${userId}`)
+            .then((response) => response.json())
+            .then((data) => setUser(data));
+
+         // Загружаем заказы пользователя
+         fetch(`http://localhost:5000/api/orders/user/${userId}`)
+            .then((response) => response.json())
+            .then((data) => setOrders(data));
+      }
+   }, []);
+
+   if (!user) {
+      return <div>Загрузка...</div>;
+   }
+
+   return (
+      <div style={{ padding: "20px" }}>
+         <h1>Мой профиль</h1>
+         <div>
+            <h3>Данные пользователя</h3>
+            <p>Имя: {user.Name}</p>
+            <p>Email: {user.Email}</p>
+            <p>Телефон: {user.Phone}</p>
+            <p>Адрес: {user.Address}</p>
+         </div>
+
+         <div>
+            <h3>Мои заказы</h3>
+            {orders.length > 0 ? (
+               <ul>
+                  {orders.map((order) => (
+                     <li key={order.Order_Id}>
+                        <p>Заказ №{order.Order_Id}</p>
+                        <p>Дата: {order.Order_Date}</p>
+                        <p>Статус: {order.Status_Title}</p>
+                        <p>Общая сумма: {order.Total_Price} ₽</p>
+                     </li>
+                  ))}
+               </ul>
+            ) : (
+               <p>Вы еще не сделали заказ.</p>
+            )}
+         </div>
+      </div>
+   );
+};
+
+export default Profile;
+
+
+
+client\client\src\pages\Login.js
+import React, { useState } from "react";
+import axios from "axios";
+
+const Login = () => {
+   const [username, setUsername] = useState("");
+   const [password, setPassword] = useState("");
+
+   const handleLogin = async (e) => {
+      e.preventDefault();
+
+      try {
+         const response = await axios.post("http://localhost:5000/api/login", {
+            username,
+            password,
+         });
+
+         alert(response.data.message);
+         localStorage.setItem("userId", response.data.userId); // Сохраняем userId
+         setUsername("");
+         setPassword("");
+      } catch (error) {
+         console.error(error);
+         alert("Ошибка входа. Проверьте данные.");
+      }
+   };
+
+   return (
+      <div style={{ padding: "20px" }}>
+         <h1>Вход</h1>
+         <form onSubmit={handleLogin}>
+            <div>
+               <label>Имя пользователя:</label>
+               <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+               />
+            </div>
+            <div>
+               <label>Пароль:</label>
+               <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+               />
+            </div>
+            <button type="submit">Войти</button>
+         </form>
+      </div>
+   );
+};
+
+export default Login;
+
+
+
+
+client\client\src\pages\Home.js
+import React from "react";
+
+const Home = () => {
+   return (
+      <div style={{ padding: "20px" }}>
+         <h1>Добро пожаловать в Пиццерию!</h1>
+         <p>Здесь вы найдете лучшие пиццы в городе!</p>
+      </div>
+   );
+};
+
+export default Home;
+
+
+
+client\client\src\pages\Catalog.js
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+
+const Catalog = () => {
+   const [products, setProducts] = useState([]);
+   const [cart, setCart] = useState({});
+
+   useEffect(() => {
+      axios
+         .get("http://localhost:5000/api/products") // Получаем продукты с сервера
+         .then((response) => setProducts(response.data))
+         .catch((error) => console.error(error));
+
+      // Загружаем корзину из localStorage при загрузке компонента
+      const savedCart = JSON.parse(localStorage.getItem("cart")) || {};
+      setCart(savedCart);
+   }, []);
+
+   const updateCart = (productId, quantity) => {
+      // Обновляем количество товара в корзине
+      const newCart = {
+         ...cart,
+         [productId]: (cart[productId] || 0) + quantity,
+      };
+
+      if (newCart[productId] <= 0) {
+         delete newCart[productId]; // Удаляем товар, если количество <= 0
+      }
+
+      setCart(newCart);
+      localStorage.setItem("cart", JSON.stringify(newCart)); // Сохраняем в localStorage
+   };
+
+   return (
+      <div style={{ padding: "20px" }}>
+         <h1>Каталог продуктов</h1>
+         <ul>
+            {products.map((product) => (
+               <li key={product.Product_Id} style={{ marginBottom: "20px" }}>
+                  <h3>{product.Name}</h3>
+                  <p>{product.Description}</p>
+                  <p>Цена: {product.Price} ₽</p>
+
+                  {/* Если продукт в корзине, показываем кнопки `-`, `+` и количество */}
+                  {cart[product.Product_Id] ? (
+                     <div
+                        style={{
+                           display: "flex",
+                           alignItems: "center",
+                           gap: "10px",
+                        }}
+                     >
+                        <button
+                           onClick={() => updateCart(product.Product_Id, -1)}
+                           style={{ padding: "5px 10px" }}
+                        >
+                           -
+                        </button>
+                        <span>{cart[product.Product_Id]}</span>
+                        <button
+                           onClick={() => updateCart(product.Product_Id, 1)}
+                           style={{ padding: "5px 10px" }}
+                        >
+                           +
+                        </button>
+                     </div>
+                  ) : (
+                     <button
+                        onClick={() => updateCart(product.Product_Id, 1)}
+                        style={{
+                           backgroundColor: "#f4f4f4",
+                           padding: "10px 20px",
+                           border: "none",
+                           borderRadius: "5px",
+                        }}
+                     >
+                        Добавить в корзину
+                     </button>
+                  )}
+               </li>
+            ))}
+         </ul>
+      </div>
+   );
+};
+
+export default Catalog;
+
+
+
+
+client\client\src\pages\Cart.js
+import React, { useEffect, useState } from "react";
+
+const Cart = () => {
+   const [cart, setCart] = useState({});
+   const [products, setProducts] = useState([]);
+
+   useEffect(() => {
+      // Получаем корзину из localStorage
+      const savedCart = JSON.parse(localStorage.getItem("cart")) || {};
+      setCart(savedCart);
+
+      // Получаем данные о продуктах
+      fetch("http://localhost:5000/api/products")
+         .then((res) => res.json())
+         .then((data) => setProducts(data));
+   }, []);
+
+   const updateCart = (productId, quantity) => {
+      const newCart = {
+         ...cart,
+         [productId]: (cart[productId] || 0) + quantity,
+      };
+
+      if (newCart[productId] <= 0) {
+         delete newCart[productId];
+      }
+
+      setCart(newCart);
+      localStorage.setItem("cart", JSON.stringify(newCart));
+   };
+
+   const clearCart = () => {
+      setCart({});
+      localStorage.removeItem("cart");
+   };
+
+   const cartItems = products.filter((product) => cart[product.Product_Id]);
+
+   return (
+      <div style={{ padding: "20px" }}>
+         <h1>Корзина</h1>
+         {cartItems.length > 0 ? (
+            <div>
+               <ul>
+                  {cartItems.map((product) => (
+                     <li
+                        key={product.Product_Id}
+                        style={{ marginBottom: "20px" }}
+                     >
+                        <h3>{product.Name}</h3>
+                        <p>Цена: {product.Price} ₽</p>
+                        <div
+                           style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                           }}
+                        >
+                           <button
+                              onClick={() => updateCart(product.Product_Id, -1)}
+                           >
+                              -
+                           </button>
+                           <span>{cart[product.Product_Id]}</span>
+                           <button
+                              onClick={() => updateCart(product.Product_Id, 1)}
+                           >
+                              +
+                           </button>
+                        </div>
+                     </li>
+                  ))}
+               </ul>
+               <button
+                  onClick={clearCart}
+                  style={{ marginTop: "20px", padding: "10px 20px" }}
+               >
+                  Очистить корзину
+               </button>
+            </div>
+         ) : (
+            <p>Корзина пуста</p>
+         )}
+      </div>
+   );
+};
+
+export default Cart;
+
+
+
+
+
+client\client\public\index.html
+<!DOCTYPE html>
+<html lang="ru">
+   <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>React App</title>
+   </head>
+   <body>
+      <div id="root"></div>
+   </body>
+</html>
+

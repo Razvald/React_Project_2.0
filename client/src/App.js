@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import Home from "./pages/Home";
-import Catalog from "./pages/Catalog";
 import Cart from "./pages/Cart";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
 import CreateProduct from "./pages/CreateProduct";
+import "./styles/App.css";
 
 const App = () => {
    const [userRole, setUserRole] = useState(null);
@@ -18,40 +18,53 @@ const App = () => {
 
    return (
       <Router>
-         <nav style={{ padding: "10px", background: "#c4c4f4" }}>
-            <Link to="/" style={{ margin: "0 10px" }}>
-               Главная
-            </Link>
-            <Link to="/catalog" style={{ margin: "0 10px" }}>
-               Каталог
-            </Link>
-            <Link to="/cart" style={{ margin: "0 10px" }}>
-               Корзина
-            </Link>
-            <Link to="/login" style={{ margin: "0 10px" }}>
-               Войти
-            </Link>
-            <Link to="/register" style={{ margin: "0 10px" }}>
-               Регистрация
-            </Link>
-            <Link to="/profile" style={{ margin: "0 10px" }}>
-               Профиль
-            </Link>
-            {userRole === "2" && (
-               <Link to="/create-product" style={{ margin: "0 10px" }}>
-                  Создание продукта
-               </Link>
-            )}
-         </nav>
-         <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/catalog" element={<Catalog />} />
-            <Route path="/cart" element={<Cart />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/create-product" element={<CreateProduct />} />
-         </Routes>
+         {/* Header */}
+         <header className="app-header">
+            <h1>Пиццерия</h1>
+            <nav>
+               <ul>
+                  <li>
+                     <Link to="/">Каталог</Link>
+                  </li>
+                  <li>
+                     <Link to="/cart">Корзина</Link>
+                  </li>
+                  <li>
+                     <Link
+                        to={
+                           localStorage.getItem("userId")
+                              ? "/profile"
+                              : "/login"
+                        }
+                     >
+                        Личный кабинет
+                     </Link>
+                  </li>
+                  {userRole === "2" && (
+                     <li>
+                        <Link to="/create-product">Создание продукта</Link>
+                     </li>
+                  )}
+               </ul>
+            </nav>
+         </header>
+
+         {/* Main Content */}
+         <main className="app-main">
+            <Routes>
+               <Route path="/" element={<Home />} />
+               <Route path="/cart" element={<Cart />} />
+               <Route path="/login" element={<Login />} />
+               <Route path="/register" element={<Register />} />
+               <Route path="/profile" element={<Profile />} />
+               <Route path="/create-product" element={<CreateProduct />} />
+            </Routes>
+         </main>
+
+         {/* Footer */}
+         <footer className="app-footer">
+            <p>© 2024 Пиццерия. Все права защищены.</p>
+         </footer>
       </Router>
    );
 };

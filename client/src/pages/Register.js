@@ -28,7 +28,7 @@ const Register = () => {
          setAddress("");
          setPhone("");
 
-         navigate("/login");
+         navigate("/profile");
       } catch (error) {
          if (error.response && error.response.data) {
             alert(error.response.data);

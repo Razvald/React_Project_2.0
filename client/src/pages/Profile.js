@@ -10,7 +10,9 @@ const Profile = () => {
       // Получаем ID пользователя из localStorage
       const userId = localStorage.getItem("userId");
 
-      if (userId) {
+      if (!userId) {
+         navigate("/login"); // Если нет userId, редиректим на страницу логина
+      } else {
          // Загружаем данные пользователя
          fetch(`http://localhost:5000/api/users/${userId}`)
             .then((response) => response.json())
@@ -21,14 +23,12 @@ const Profile = () => {
             .then((response) => response.json())
             .then((data) => setOrders(data));
       }
-   }, []);
+   }, [navigate]);
 
    const handleLogout = () => {
       navigate("/login"); // Редирект на страницу входа
-      // Перезагрузка страницы
-      window.location.reload();
-      // Очистка localStorage и редирект на страницу входа
       localStorage.clear();
+      window.location.reload();
    };
 
    if (!user) {

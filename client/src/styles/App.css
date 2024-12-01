@@ -1,0 +1,56 @@
+/* Header */
+.app-header {
+   background-color: #333;
+   color: #fff;
+   padding: 10px 20px;
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   flex-wrap: wrap;
+}
+
+.app-header h1 {
+   margin: 0;
+   font-size: 1.5em;
+}
+
+.app-header nav ul {
+   list-style: none;
+   display: flex;
+   gap: 20px; /* Увеличиваем интервал между ссылками */
+   margin: 0;
+   padding: 0;
+}
+
+.app-header nav ul li {
+   display: inline;
+}
+
+.app-header nav ul li a {
+   color: #fff;
+   text-decoration: none;
+   font-size: 1em;
+   font-weight: bold; /* Добавим жирное начертание для выделения */
+   text-transform: uppercase; /* Заглавные буквы для стиля */
+   transition: color 0.3s ease; /* Плавное изменение цвета */
+}
+
+.app-header nav ul li a:hover {
+   color: #f39c12; /* Цвет при наведении */
+}
+
+/* Main */
+.app-main {
+   flex: 1;
+   padding: 20px;
+   background-color: #f9f9f9;
+}
+
+/* Footer */
+.app-footer {
+   background-color: #333;
+   color: #fff;
+   text-align: center;
+   padding: 10px 0;
+   margin-top: auto;
+}

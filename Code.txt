@@ -25,20 +25,34 @@ const dbConfig = {
 
 // Регистрация
 app.post("/api/register", async (req, res) => {
-   const { username, password } = req.body;
+   const { username, password, email, phone, address } = req.body;
 
-   if (!username || !password) {
-      return res.status(400).send("Введите имя пользователя и пароль");
+   if (!username || !password || !email || !phone || !address) {
+      return res.status(400).send("Все поля должны быть заполнены");
    }
 
    try {
       const pool = await sql.connect(dbConfig);
+      const existingUser = await pool
+         .request()
+         .input("email", sql.NVarChar, email)
+         .query("SELECT * FROM Users WHERE Email = @email");
+
+      if (existingUser.recordset.length > 0) {
+         return res
+            .status(400)
+            .send("Пользователь с таким email уже существует");
+      }
+
       await pool
          .request()
-         .input("username", sql.NVarChar, username)
+         .input("name", sql.NVarChar, username)
+         .input("email", sql.NVarChar, email)
          .input("password", sql.NVarChar, password)
+         .input("phone", sql.NVarChar, phone)
+         .input("address", sql.NVarChar, address)
          .query(
-            "INSERT INTO Users (Email, Password, Role_Id) VALUES (@username, @password, 1)"
+            "INSERT INTO Users (Name, Email, Password, Phone, Address, Role_Id) VALUES (@name, @email, @password, @phone, @address, 1)"
          );
       res.send("Регистрация прошла успешно");
    } catch (err) {
@@ -69,7 +83,11 @@ app.post("/api/login", async (req, res) => {
          return res.status(401).send("Неверные имя пользователя или пароль");
       }
 
-      res.json({ message: "Вы успешно вошли", userId: user.User_Id });
+      res.json({
+         message: "Вы успешно вошли",
+         userId: user.User_Id,
+         userRole: user.Role_Id,
+      });
    } catch (err) {
       console.error(err);
       res.status(500).send("Ошибка сервера");
@@ -114,6 +132,52 @@ app.get("/api/orders/user/:id", async (req, res) => {
    }
 });
 
+// API для оформления заказа
+app.post("/api/orders", async (req, res) => {
+   const { userId, products } = req.body;
+
+   try {
+      // Рассчитываем общую цену
+      const totalPrice = products.reduce(
+         (total, product) => total + product.Price * product.Quantity,
+         0
+      );
+
+      // Создаем заказ в таблице Orders
+      const pool = await sql.connect(dbConfig);
+      const result = await pool
+         .request()
+         .input("User_Id", sql.Int, userId)
+         .input("Total_Price", sql.Int, totalPrice)
+         .input("Status_Id", sql.Int, 1) // Статус заказа, например, 1 - в процессе
+         .query(
+            "INSERT INTO Orders (User_Id, Total_Price, Status_Id, Order_Date) OUTPUT Inserted.Order_Id VALUES (@User_Id, @Total_Price, @Status_Id, GETDATE())"
+         );
+
+      const orderId = result.recordset[0].Order_Id;
+
+      // Добавляем детали заказа в таблицу Order_Details
+      const orderDetailsPromises = products.map((product) => {
+         return pool
+            .request()
+            .input("Order_Id", sql.Int, orderId)
+            .input("Product_Id", sql.Int, product.Product_Id)
+            .input("Quantity", sql.Int, product.Quantity)
+            .query(
+               "INSERT INTO Order_Details (Order_Id, Product_Id, Quantity) VALUES (@Order_Id, @Product_Id, @Quantity)"
+            );
+      });
+
+      // Ожидаем завершения всех операций
+      await Promise.all(orderDetailsPromises);
+
+      res.status(201).json({ message: "Заказ успешно оформлен", orderId });
+   } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Ошибка при оформлении заказа" });
+   }
+});
+
 // API endpoint для получения продуктов
 app.get("/api/products", async (req, res) => {
    try {
@@ -126,12 +190,36 @@ app.get("/api/products", async (req, res) => {
    }
 });
 
+// API endpoint для добавления продуктов
+app.post("/api/products", async (req, res) => {
+   const { Name, Description, Price, Image_url, Categories } = req.body;
+
+   try {
+      const pool = await sql.connect(dbConfig);
+      await pool
+         .request()
+         .input("Name", sql.NVarChar, Name)
+         .input("Description", sql.NVarChar, Description)
+         .input("Price", sql.Int, Price)
+         .input("Image_url", sql.NVarChar, Image_url)
+         .input("Categories", sql.Int, Categories)
+         .query(
+            "INSERT INTO Products (Name, Description, Price, Image_url, Category_Id) VALUES (@Name, @Description, @Price, @Image_url, @Categories)"
+         );
+
+      res.status(201).json({ message: "Продукт добавлен успешно" });
+   } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Ошибка на сервере" });
+   }
+});
+
 app.listen(port, () => {
    console.log(`Server is running on http://localhost:${port}`);
 });
+---------------------------------------------
 
-
-client\client\src\index.js
+client\src\index.js
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -143,9 +231,11 @@ root.render(
   </React.StrictMode>
 );
 
+---------------------------------------------
 
-client\client\src\App.js
-import React from "react";
+
+client\src\App.js
+import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import Home from "./pages/Home";
 import Catalog from "./pages/Catalog";
@@ -153,8 +243,16 @@ import Cart from "./pages/Cart";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
+import CreateProduct from "./pages/CreateProduct";
 
 const App = () => {
+   const [userRole, setUserRole] = useState(null);
+
+   useEffect(() => {
+      const role = localStorage.getItem("userRole");
+      setUserRole(role);
+   }, []);
+
    return (
       <Router>
          <nav style={{ padding: "10px", background: "#c4c4f4" }}>
@@ -176,6 +274,11 @@ const App = () => {
             <Link to="/profile" style={{ margin: "0 10px" }}>
                Профиль
             </Link>
+            {userRole === "2" && (
+               <Link to="/create-product" style={{ margin: "0 10px" }}>
+                  Создание продукта
+               </Link>
+            )}
          </nav>
          <Routes>
             <Route path="/" element={<Home />} />
@@ -184,6 +287,7 @@ const App = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/create-product" element={<CreateProduct />} />
          </Routes>
       </Router>
    );
@@ -192,14 +296,22 @@ const App = () => {
 export default App;
 
 
+---------------------------------------------
 
-client\client\src\pages\Register.js
+
+
+client\src\pages\Register.js
 import React, { useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom"; // Для редиректа
 
 const Register = () => {
    const [username, setUsername] = useState("");
    const [password, setPassword] = useState("");
+   const [email, setEmail] = useState("");
+   const [address, setAddress] = useState("");
+   const [phone, setPhone] = useState("");
+   const navigate = useNavigate();
 
    const handleRegister = async (e) => {
       e.preventDefault();
@@ -208,14 +320,24 @@ const Register = () => {
          await axios.post("http://localhost:5000/api/register", {
             username,
             password,
+            email,
+            address,
+            phone,
          });
 
-         alert("Регистрация прошла успешно");
          setUsername("");
          setPassword("");
+         setEmail("");
+         setAddress("");
+         setPhone("");
+
+         navigate("/login");
       } catch (error) {
-         console.error(error);
-         alert("Ошибка регистрации. Попробуйте снова.");
+         if (error.response && error.response.data) {
+            alert(error.response.data);
+         } else {
+            alert("Ошибка регистрации. Попробуйте снова.");
+         }
       }
    };
 
@@ -232,11 +354,35 @@ const Register = () => {
                />
             </div>
             <div>
+               <label>Почта:</label>
+               <input
+                  type="text"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+               />
+            </div>
+            <div>
                <label>Пароль:</label>
                <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+               />
+            </div>
+            <div>
+               <label>Адресс дотавки:</label>
+               <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+               />
+            </div>
+            <div>
+               <label>Телефон:</label>
+               <input
+                  type="phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                />
             </div>
             <button type="submit">Зарегистрироваться</button>
@@ -249,12 +395,17 @@ export default Register;
 
 
 
-client\client\src\pages\Profile.js
+---------------------------------------------
+
+
+client\src\pages\Profile.js
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom"; // Для редиректа
 
 const Profile = () => {
    const [user, setUser] = useState(null);
    const [orders, setOrders] = useState([]);
+   const navigate = useNavigate();
 
    useEffect(() => {
       // Получаем ID пользователя из localStorage
@@ -272,6 +423,14 @@ const Profile = () => {
             .then((data) => setOrders(data));
       }
    }, []);
+
+   const handleLogout = () => {
+      navigate("/login"); // Редирект на страницу входа
+      // Перезагрузка страницы
+      window.location.reload();
+      // Очистка localStorage и редирект на страницу входа
+      localStorage.clear();
+   };
 
    if (!user) {
       return <div>Загрузка...</div>;
@@ -305,21 +464,37 @@ const Profile = () => {
                <p>Вы еще не сделали заказ.</p>
             )}
          </div>
+
+         <button
+            onClick={handleLogout}
+            style={{
+               marginTop: "20px",
+               padding: "10px 20px",
+               backgroundColor: "#f4f4f4",
+               border: "none",
+               borderRadius: "5px",
+            }}
+         >
+            Выйти
+         </button>
       </div>
    );
 };
 
 export default Profile;
 
+---------------------------------------------
 
 
-client\client\src\pages\Login.js
+client\src\pages\Login.js
 import React, { useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom"; // Для редиректа
 
 const Login = () => {
    const [username, setUsername] = useState("");
    const [password, setPassword] = useState("");
+   const navigate = useNavigate();
 
    const handleLogin = async (e) => {
       e.preventDefault();
@@ -330,10 +505,14 @@ const Login = () => {
             password,
          });
 
-         alert(response.data.message);
-         localStorage.setItem("userId", response.data.userId); // Сохраняем userId
+         localStorage.setItem("userId", response.data.userId);
+         localStorage.setItem("userRole", response.data.userRole);
          setUsername("");
          setPassword("");
+
+         navigate("/profile");
+         // Перезагрузка страницы
+         window.location.reload();
       } catch (error) {
          console.error(error);
          alert("Ошибка входа. Проверьте данные.");
@@ -369,9 +548,10 @@ const Login = () => {
 export default Login;
 
 
+---------------------------------------------
 
 
-client\client\src\pages\Home.js
+client\src\pages\Home.js
 import React from "react";
 
 const Home = () => {
@@ -386,8 +566,11 @@ const Home = () => {
 export default Home;
 
 
+---------------------------------------------
 
-client\client\src\pages\Catalog.js
+
+
+client\src\pages\Catalog.js
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
@@ -477,21 +660,118 @@ const Catalog = () => {
 export default Catalog;
 
 
+---------------------------------------------
 
 
-client\client\src\pages\Cart.js
+client\src\pages\CreateProduct.js
+import React, { useState } from "react";
+import axios from "axios";
+
+const CreateProduct = () => {
+   const [name, setName] = useState("");
+   const [description, setDescription] = useState("");
+   const [price, setPrice] = useState("");
+   const [imageUrl, setImageUrl] = useState("");
+   const [categories, setCategories] = useState("");
+
+   const handleSubmit = async (e) => {
+      e.preventDefault();
+
+      try {
+         await axios.post("http://localhost:5000/api/products", {
+            Name: name,
+            Description: description,
+            Price: parseInt(price),
+            Image_url: imageUrl,
+            Categories: parseInt(categories),
+         });
+
+         alert("Продукт успешно добавлен!");
+         setName("");
+         setDescription("");
+         setPrice("");
+         setImageUrl("");
+         setCategories("");
+      } catch (error) {
+         console.error(error);
+         alert("Ошибка при добавлении продукта.");
+      }
+   };
+
+   return (
+      <div style={{ padding: "20px" }}>
+         <h1>Добавить продукт</h1>
+         <form onSubmit={handleSubmit}>
+            <div>
+               <label>Название:</label>
+               <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+               />
+            </div>
+            <div>
+               <label>Тип продукта:</label>
+               <input
+                  type="number"
+                  value={categories}
+                  onChange={(e) => setCategories(e.target.value)}
+                  required
+               />
+            </div>
+            <div>
+               <label>Описание:</label>
+               <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  required
+               />
+            </div>
+            <div>
+               <label>Цена:</label>
+               <input
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  required
+               />
+            </div>
+            <div>
+               <label>URL изображения:</label>
+               <input
+                  type="text"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  required
+               />
+            </div>
+            <button type="submit">Добавить</button>
+         </form>
+      </div>
+   );
+};
+
+export default CreateProduct;
+
+
+---------------------------------------------
+
+
+client\src\pages\Cart.js
 import React, { useEffect, useState } from "react";
+import axios from "axios";
 
 const Cart = () => {
    const [cart, setCart] = useState({});
    const [products, setProducts] = useState([]);
+   const [userId] = useState(1); // Например, hardcoded userId
+   const [isSubmitting, setIsSubmitting] = useState(false);
 
    useEffect(() => {
-      // Получаем корзину из localStorage
       const savedCart = JSON.parse(localStorage.getItem("cart")) || {};
       setCart(savedCart);
 
-      // Получаем данные о продуктах
       fetch("http://localhost:5000/api/products")
          .then((res) => res.json())
          .then((data) => setProducts(data));
@@ -514,6 +794,31 @@ const Cart = () => {
    const clearCart = () => {
       setCart({});
       localStorage.removeItem("cart");
+   };
+
+   const handleCheckout = async () => {
+      const cartItems = products.filter((product) => cart[product.Product_Id]);
+      const orderProducts = cartItems.map((product) => ({
+         Product_Id: product.Product_Id,
+         Quantity: cart[product.Product_Id],
+         Price: product.Price,
+      }));
+
+      setIsSubmitting(true);
+      try {
+         await axios.post("http://localhost:5000/api/orders", {
+            userId: userId,
+            products: orderProducts,
+         });
+
+         alert("Заказ успешно оформлен!");
+         clearCart(); // Очистка корзины после оформления заказа
+      } catch (error) {
+         console.error(error);
+         alert("Ошибка при оформлении заказа.");
+      } finally {
+         setIsSubmitting(false);
+      }
    };
 
    const cartItems = products.filter((product) => cart[product.Product_Id]);
@@ -559,6 +864,15 @@ const Cart = () => {
                >
                   Очистить корзину
                </button>
+               <div style={{ marginTop: "20px" }}>
+                  <button
+                     onClick={handleCheckout}
+                     disabled={isSubmitting}
+                     style={{ padding: "10px 20px" }}
+                  >
+                     {isSubmitting ? "Оформление..." : "Оформить заказ"}
+                  </button>
+               </div>
             </div>
          ) : (
             <p>Корзина пуста</p>
@@ -570,10 +884,10 @@ const Cart = () => {
 export default Cart;
 
 
+---------------------------------------------
 
 
-
-client\client\public\index.html
+client\public\index.html
 <!DOCTYPE html>
 <html lang="ru">
    <head>
